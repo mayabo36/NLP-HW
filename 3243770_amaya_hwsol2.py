@@ -20,7 +20,7 @@ sentences_with_label = []
 # Start by reading in the file name and perform text pre-processing
 with open(sys.argv[1], 'r') as dataset:
     rows = dataset.readlines()
-    for row in rows[0:10]:
+    for row in rows:
         [words, label] = row.lower().replace('\'', '').split('\t')    
         # remove punctuations from words then leftover empty spaces
         word_array = re.sub('[ ]+', ' ', re.sub('['+string.punctuation+']', ' ', words)).split()
@@ -53,16 +53,7 @@ for key in range(1, n_gram_length + 1):
                 frequency_index.append(0)
         n_grams_matrix[key].append(frequency_index)
 
-# for key in range(1, n_gram_length + 1):
-#     print('matrix for key', key, 'of length', len(sorted_feature_vectors[key]))
-#     for frequency_index in n_grams_matrix[key]:
-#         print(frequency_index)
-#     print('\n\n')
-
-# for index, (sentence, label, _) in enumerate(sentences_with_label):
-#     print(sentence, label, n_grams_matrix[1][index])
-
-# Get the list of sentences with postive (1) and negative (0) labels for each n_gram
+# Get the list of sentences with negativ (0) and positive (1) labels for each n_gram
 n_grams_matrix_by_label = {key: ([], []) for key in range(1, n_gram_length + 1)}
 for key in range(1, n_gram_length + 1):
     for index, (_, label, _) in enumerate(sentences_with_label):
@@ -74,12 +65,37 @@ for key in range(1, n_gram_length + 1):
 # Initialize the SVM classifier
 binary_classifier = svm.LinearSVC()
 
-# Fit the binary classifier using 1_grams
-binary_classifier.fit(n_grams_matrix[1], [label for (_, label, _) in sentences_with_label])
 
+def train_and_test(negatives, positives):
 
+    for start in range(10):
 
+        training_data = ([], [])
+        testing_data = ([], [])
 
+        # Seperate the data into 90% training and 10% testing, ensuring that the training includes 90% of the positive labels and 90% of the negative labels
+        # negatives, positives = n_grams_matrix_by_label[1]
+        for label, vector in [(0, negatives), (1, positives)]:
+            for index, item in enumerate(vector):
+                if (index - start) % 10:
+                    training_data[0].append(item)
+                    training_data[1].append(label)
+                else:
+                    testing_data[0].append(item)
+                    testing_data[1].append(label)  
 
+        # train the model with the training data
+        binary_classifier.fit(training_data[0], training_data[1])
 
+        # test the model and calculate 7 metrics: 
+        # false positive rate, false negative rate, true positive rate, true negative rate, accuracy, precision and recall
+        predicted_labels = binary_classifier.predict(testing_data[0])
+        print("Actual labels:   ", '[%s]' % ' '.join([str(x) for x in testing_data[1]]))
+        print("Predicted labels:", predicted_labels)
+        print('\n')
 
+# Test for each feature_vector
+for key in range(1, n_gram_length + 1):
+    print("Testing feature {}".format(key))
+    train_and_test(*n_grams_matrix_by_label[key])
+    print('\n\n')
