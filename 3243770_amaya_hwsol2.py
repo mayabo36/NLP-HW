@@ -53,7 +53,7 @@ for key in range(1, n_gram_length + 1):
                 frequency_index.append(0)
         n_grams_matrix[key].append(frequency_index)
 
-# Get the list of sentences with negativ (0) and positive (1) labels for each n_gram
+# Get the list of sentences with negative (0) and positive (1) labels for each feature
 n_grams_matrix_by_label = {key: ([], []) for key in range(1, n_gram_length + 1)}
 for key in range(1, n_gram_length + 1):
     for index, (_, label, _) in enumerate(sentences_with_label):
@@ -62,11 +62,29 @@ for key in range(1, n_gram_length + 1):
         elif label is 1:
             n_grams_matrix_by_label[key][1].append(n_grams_matrix[key][index])
 
+# Combine feature vectors
+def make_matrix_for_1_to(end, max_length):
+    result = ([], [])
+    for key in range(1, end + 1):
+        negatives, positives = n_grams_matrix_by_label[key]
+        # Pad with zeroes to match the largest feature vector length
+        for index, x in [(0, negatives), (1, positives)]:
+            for y in x:
+                [y.append(0) for x in range(len(y), max_length)]
+                result[index].append(y)
+    return result
+
 # Initialize the SVM classifier
 binary_classifier = svm.LinearSVC()
 
-
+# Train and test the classifier using 10-fold cross validation
 def train_and_test(negatives, positives):
+
+    # Initialize the metric values
+    false_positive_rate, false_negative_rate, true_positive_rate, true_negative_rate, accuracy, precision, recall = (0.0 for _ in range(7))
+
+    # Array to hold the metrics for each part of the 10-fold cross validation
+    fpr, fnr, tpr, tnr, acc, prec, rec = ([] for _ in range(7))
 
     for start in range(10):
 
@@ -89,13 +107,73 @@ def train_and_test(negatives, positives):
 
         # test the model and calculate 7 metrics: 
         # false positive rate, false negative rate, true positive rate, true negative rate, accuracy, precision and recall
-        predicted_labels = binary_classifier.predict(testing_data[0])
-        print("Actual labels:   ", '[%s]' % ' '.join([str(x) for x in testing_data[1]]))
-        print("Predicted labels:", predicted_labels)
-        print('\n')
+        # All formulas from: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+        predicted_labels = binary_classifier.predict(testing_data[0] or [[]])
 
-# Test for each feature_vector
+        # Get basic numbers used for metric calculations
+        condition_positives = len(positives)
+        condition_negatives = len(negatives)
+        true_positives = true_negatives = false_positives = false_negatives = 0
+
+        for (predicted_label, actual_label) in zip(predicted_labels, testing_data[1]):
+            if predicted_label == actual_label:
+                if predicted_label == 1:
+                    true_positives += 1
+                else:
+                    true_negatives += 1
+            else:
+                if predicted_label == 1:
+                    false_positives += 1
+                else:
+                    false_negatives += 1
+        
+        # Calculate false positive rate
+        fpr.append(false_positives / condition_negatives if condition_negatives != 0 else 1)
+
+        # Calculate false negative rate
+        fnr.append(false_negatives / condition_positives if condition_positives != 0 else 1)
+
+        # Calculate true positive rate
+        tpr.append(true_positives / condition_positives if condition_positives != 0 else 1)
+
+        # Calculate true negative rate
+        tnr.append(true_negatives / condition_negatives if condition_negatives != 0 else 1)
+
+        # Calculate accuracy
+        acc.append((true_positives + true_negatives) / (condition_positives + condition_negatives) if (condition_positives + condition_negatives) != 0 else 1)
+
+        # Calculate precision
+        prec.append(true_positives / (true_positives + false_positives) if (true_positives + false_positives) != 0 else 1)
+
+        # Calculate recall
+        rec.append(true_positives / condition_positives if condition_positives != 0 else 1)
+
+    # Get the average metric value for the feature
+    false_positive_rate = sum(fpr) / len(fpr)
+    false_negative_rate = sum(fnr) / len(fnr)
+    true_positive_rate = sum(tpr) / len(tpr)
+    true_negative_rate = sum(tnr) / len(tnr)
+    accuracy = sum(acc) / len(acc)
+    precision = sum(prec) / len(prec)
+    recall = sum(rec) / len(rec)
+
+    print("FPR:{0:.5f}".format(false_positive_rate))
+    print("FNR:{0:.5f}".format(false_negative_rate))
+    print("TPR:{0:.5f}".format(true_positive_rate))
+    print("TNR:{0:.5f}".format(true_negative_rate))
+    print("Accuracy:{0:.5f}".format(accuracy))
+    print("Precision:{0:.5f}".format(precision))
+    print("Recall:{0:.5f}".format(recall))
+
+# Test each feature_vector seperated (f1, f2, f3, f4, f5)
 for key in range(1, n_gram_length + 1):
     print("Testing feature {}".format(key))
     train_and_test(*n_grams_matrix_by_label[key])
-    print('\n\n')
+    print('')
+
+# Test the feature_vectors combined (f1f2, f1f2f3, f1f2f3f4, f1f2f3f4f5)
+max_len = max(len(sorted_feature_vectors[x]) for x in range(1, n_gram_length + 1))
+for key in range(2, n_gram_length + 1):
+    print("Testing features", 1, '-', key)
+    train_and_test(*make_matrix_for_1_to(key, max_len))
+    print('')
